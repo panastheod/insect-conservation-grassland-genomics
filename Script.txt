@@ -1,0 +1,928 @@
+###################################################################################################
+# Annotated scripts (journal-ready; safe to archive on Figshare<PATH>)
+#
+# GUARANTEE:
+#   - All executable lines are preserved exactly as provided (byte-identical).
+#   - Only comments were added<PATH> for clarity.
+#   - Any system-specific file locations are described abstractly in the annotations below.
+#
+# NOTE ON PORTABILITY:
+#   - Absolute paths still appear in the code because they were used in the original workflow.
+#   - To re-run elsewhere, edit paths in a separate working copy (not in the archived version).
+###################################################################################################
+
+###################################################################################################
+# SECTION: Quality filtering and adapter trimming (paired-end Illumina reads)
+# Purpose:
+#   Trim adapter sequence and low-quality bases prior to RADseq assembly or mapping.
+#   Process all samples in a directory by iterating over R1 files and inferring R2 names.
+# Inputs:
+#   - Raw paired-end FASTQ files (R1<PATH>) for each sample.
+#   - Adapter FASTA used by bbduk.
+# Outputs:
+#   - Cleaned paired-end FASTQ files (one R1 and one R2 per sample).
+#   - Trimming summary statistics file (trimstats.txt).
+# Key tools<PATH>:
+#   - BBMap / BBDuk (bbduk.sh)
+#   - GNU coreutils (ls, dirname, basename)
+###################################################################################################
+
+########bbmap bbduk for quality filtering and adapter trimming############
+# Loop over each R1 fastq file in the specified directory
+for i in `ls -1 /home/sequences/*_L004_R1_001.fastq.gz`; \
+do
+    # Extract the directory name from the file path of each file
+    dname=$(dirname ${i})
+    # Extract the base name of the file, removing the suffix "_L004_R1_001.fastq.gz"
+    name=$(basename ${i} _L004_R1_001.fastq.gz)
+    
+    # Run bbduk for quality filtering and adapter trimming
+    /home/bbmap/bbduk.sh \
+        in1=${dname}/${name}_L004_R1_001.fastq.gz \         # Specify the input file for R1 (forward reads)
+        in2=${dname}/${name}_L004_R2_001.fastq.gz \         # Specify the input file for R2 (reverse reads)
+        out1=/scratch/clean/${name}_clean_L004_R1_001.fastq.gz \ # Output for cleaned R1 reads
+        out2=/scratch/clean/${name}_clean_L004_R2_001.fastq.gz \ # Output for cleaned R2 reads
+        ref=/home/bbmap/resources/adapters.fa \ # Reference file for adapter sequences 
+        minlen=100 \
+		ktrim=r \ 
+		k=17 \
+		mink=8 \ 
+		hdist=1 \
+		qtrim=rl \
+		trimq=10 \
+		ordered=t \
+		threads=112 \
+		stats=trimstats.txt ;
+done
+
+###################################################################################################
+# SECTION: ipyrad parameters — Polyommatus icarus (reference-based assembly)
+# Purpose:
+#   Record the exact ipyrad configuration used to assemble RAD loci and export downstream formats.
+# Inputs:
+#   - Cleaned<PATH> FASTQ directory (ipyrad [4]).
+#   - Reference genome FASTA (ipyrad [6]).
+# Outputs:
+#   - ipyrad assembly directories and outputs (e.g., loci, SNP tables, VCFs depending on [27]).
+# Key tools<PATH>:
+#   - ipyrad
+###################################################################################################
+
+####Polyommatus icarus ipyrad params file
+------- ipyrad params file (v.0.9.104)------------------------------------------
+polyommatus2025                ## [0] [assembly_name]: Assembly name. Used to name output directories for assembly steps
+/scratch/Polyommatusicarus ## [1] [project_dir]: Project dir (made in curdir if not present)
+                               ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
+                               ## [3] [barcodes_path]: Location of barcodes file
+/scratch/Polyommatusicarus/clean/*.fastq.gz                               ## [4] [sorted_fastq_path]: Location of demultiplexed/sorted fastq files
+reference                         ## [5] [assembly_method]: Assembly method (denovo, reference)
+/scratch/Polyommatusicarus/genome/GCA_937595015.1_ilPolIcar1.1_genomic.fna                               ## [6] [reference_sequence]: Location of reference sequence file
+rad                            ## [7] [datatype]: Datatype (see docs): rad, gbs, ddrad, etc.
+                        ## [8] [restriction_overhang]: Restriction overhang (cut1,) or (cut1, cut2)
+5                              ## [9] [max_low_qual_bases]: Max low quality base calls (Q<20) in a read
+33                             ## [10] [phred_Qscore_offset]: phred Q score offset (33 is default and very standard)
+6                              ## [11] [mindepth_statistical]: Min depth for statistical base calling
+6                              ## [12] [mindepth_majrule]: Min depth for majority-rule base calling
+10000                          ## [13] [maxdepth]: Max cluster depth within samples
+0.90                           ## [14] [clust_threshold]: Clustering threshold for de novo assembly
+0                              ## [15] [max_barcode_mismatch]: Max number of allowable mismatches in barcodes
+0                              ## [16] [filter_adapters]: Filter for adapters/primers (1 or 2=stricter)
+35                             ## [17] [filter_min_trim_len]: Min length of reads after adapter trim
+2                              ## [18] [max_alleles_consens]: Max alleles per site in consensus sequences
+0.05                           ## [19] [max_Ns_consens]: Max N's (uncalled bases) in consensus
+0.05                           ## [20] [max_Hs_consens]: Max Hs (heterozygotes) in consensus
+4                              ## [21] [min_samples_locus]: Min # samples per locus for output
+0.2                            ## [22] [max_SNPs_locus]: Max # SNPs per locus
+8                              ## [23] [max_Indels_locus]: Max # of indels per locus
+0.5                            ## [24] [max_shared_Hs_locus]: Max # heterozygous sites per locus
+0, 0, 0, 0                     ## [25] [trim_reads]: Trim raw read edges (R1>, <R1, R2>, <R2) (see docs)
+0, 0, 0, 0                     ## [26] [trim_loci]: Trim locus edges (see docs) (R1>, <R1, R2>, <R2)
+p, s, v                        ## [27] [output_formats]: Output formats (see docs)
+                           ## [28] [pop_assign_file]: Path to population assignment file
+                               ## [29] [reference_as_filter]: Reads mapped to this reference are removed in step 3
+
+###################################################################################################
+# SECTION: ipyrad parameters — Melanargia galathea (reference-based assembly)
+# Purpose:
+#   Record the exact ipyrad configuration used for this species; version is noted in the params header.
+# Inputs:
+#   - Cleaned<PATH> FASTQ directory (ipyrad [4]).
+#   - Reference genome FASTA (ipyrad [6]).
+# Outputs:
+#   - ipyrad assembly outputs for downstream filtering<PATH>
+# Key tools<PATH>:
+#   - ipyrad
+###################################################################################################
+
+####Melanargia galathea ipyrad params file
+------- ipyrad params file (v.0.9.90)-------------------------------------------
+melanargiagalathea             ## [0] [assembly_name]: Assembly name. Used to name output directories for assembly steps
+/scratch/panas/MelanargiaGalathea ## [1] [project_dir]: Project dir (made in curdir if not present)
+                               ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
+                               ## [3] [barcodes_path]: Location of barcodes file
+/scratch/panasMelanargiaGalathea/clean/*.fastq.gz                               ## [4] [sorted_fastq_path]: Location of demultiplexed/sorted fastq files
+reference                         ## [5] [assembly_method]: Assembly method (denovo, reference)
+/scratch/panas/MelanargiaGalathea/genome/GCA_920104075.1_ilMelGala2.1_genomic.fna                               ## [6] [reference_sequence]: Location of reference sequence file
+rad                            ## [7] [datatype]: Datatype (see docs): rad, gbs, ddrad, etc.
+                         ## [8] [restriction_overhang]: Restriction overhang (cut1,) or (cut1, cut2)
+5                              ## [9] [max_low_qual_bases]: Max low quality base calls (Q<20) in a read
+33                             ## [10] [phred_Qscore_offset]: phred Q score offset (33 is default and very standard)
+6                              ## [11] [mindepth_statistical]: Min depth for statistical base calling
+6                              ## [12] [mindepth_majrule]: Min depth for majority-rule base calling
+10000                          ## [13] [maxdepth]: Max cluster depth within samples
+0.85                           ## [14] [clust_threshold]: Clustering threshold for de novo assembly
+0                              ## [15] [max_barcode_mismatch]: Max number of allowable mismatches in barcodes
+0                              ## [16] [filter_adapters]: Filter for adapters/primers (1 or 2=stricter)
+35                            ## [17] [filter_min_trim_len]: Min length of reads after adapter trim
+2                              ## [18] [max_alleles_consens]: Max alleles per site in consensus sequences
+0.05                           ## [19] [max_Ns_consens]: Max N's (uncalled bases) in consensus
+0.05                           ## [20] [max_Hs_consens]: Max Hs (heterozygotes) in consensus
+4                              ## [21] [min_samples_locus]: Min # samples per locus for output
+0.2                            ## [22] [max_SNPs_locus]: Max # SNPs per locus
+8                              ## [23] [max_Indels_locus]: Max # of indels per locus
+0.5                            ## [24] [max_shared_Hs_locus]: Max # heterozygous sites per locus
+0, 0, 0, 0                     ## [25] [trim_reads]: Trim raw read edges (R1>, <R1, R2>, <R2) (see docs)
+0, 0, 0, 0                     ## [26] [trim_loci]: Trim locus edges (see docs) (R1>, <R1, R2>, <R2)
+v                        ## [27] [output_formats]: Output formats (see docs)
+                               ## [28] [pop_assign_file]: Path to population assignment file
+                               ## [29] [reference_as_filter]: Reads mapped to this reference are removed in step 3
+
+###################################################################################################
+# SECTION: ipyrad parameters — Conocephalus fuscus (de novo assembly)
+# Purpose:
+#   Record the ipyrad configuration for de novo RAD locus assembly (no reference genome specified).
+# Inputs:
+#   - Cleaned<PATH> FASTQ directory (ipyrad [4]).
+# Outputs:
+#   - ipyrad de novo assembly outputs.
+# Key tools<PATH>:
+#   - ipyrad
+###################################################################################################
+
+####Conocephalus fuscus ipyrad params file
+------- ipyrad params file (v.0.9.104)------------------------------------------
+conochephalusDenovoIpyradnew   ## [0] [assembly_name]: Assembly name. Used to name output directories for assembly steps
+/scratch/panas/ChristopherRADseq/Conocephalusfuscus ## [1] [project_dir]: Project dir (made in curdir if not present)
+                               ## [2] [raw_fastq_path]: Location of raw non-demultiplexed fastq files
+                               ## [3] [barcodes_path]: Location of barcodes file
+/scratch/panas/ChristopherRADseq/Conocephalusfuscus/clean/*.fastq.gz  ## [4] [sorted_fastq_path]: Location of demultiplexed/sorted fastq files
+denovo                         ## [5] [assembly_method]: Assembly method (denovo, reference)
+  ## [6] [reference_sequence]: Location of reference sequence file
+rad                            ## [7] [datatype]: Datatype (see docs): rad, gbs, ddrad, etc.
+                         ## [8] [restriction_overhang]: Restriction overhang (cut1,) or (cut1, cut2)
+5                              ## [9] [max_low_qual_bases]: Max low quality base calls (Q<20) in a read
+33                             ## [10] [phred_Qscore_offset]: phred Q score offset (33 is default and very standard)
+6                              ## [11] [mindepth_statistical]: Min depth for statistical base calling
+6                              ## [12] [mindepth_majrule]: Min depth for majority-rule base calling
+10000                          ## [13] [maxdepth]: Max cluster depth within samples
+0.85                           ## [14] [clust_threshold]: Clustering threshold for de novo assembly
+0                              ## [15] [max_barcode_mismatch]: Max number of allowable mismatches in barcodes
+0                              ## [16] [filter_adapters]: Filter for adapters/primers (1 or 2=stricter)
+35                             ## [17] [filter_min_trim_len]: Min length of reads after adapter trim
+2                              ## [18] [max_alleles_consens]: Max alleles per site in consensus sequences
+0.05                           ## [19] [max_Ns_consens]: Max N's (uncalled bases) in consensus
+0.05                           ## [20] [max_Hs_consens]: Max Hs (heterozygotes) in consensus
+4                              ## [21] [min_samples_locus]: Min # samples per locus for output
+0.2                            ## [22] [max_SNPs_locus]: Max # SNPs per locus
+8                              ## [23] [max_Indels_locus]: Max # of indels per locus
+0.5                            ## [24] [max_shared_Hs_locus]: Max # heterozygous sites per locus
+0, 0, 0, 0                     ## [25] [trim_reads]: Trim raw read edges (R1>, <R1, R2>, <R2) (see docs)
+0, 0, 0, 0                     ## [26] [trim_loci]: Trim locus edges (see docs) (R1>, <R1, R2>, <R2)
+v                        ## [27] [output_formats]: Output formats (see docs)
+                               ## [28] [pop_assign_file]: Path to population assignment file
+                               ## [29] [reference_as_filter]: Reads mapped to this reference are removed in step 3
+							   
+###################################################################################################
+# SECTION: VCF filtering and sample QC (VCFtools)
+# Purpose:
+#   Filter variants by call rate (missingness) and allele frequency.
+#   Assess relatedness and per-individual missingness to identify and remove low-quality individuals.
+# Inputs:
+#   - Multisample VCF (compressed or uncompressed depending on command).
+#   - Optional lists of individuals to remove produced during QC.
+# Outputs:
+#   - Filtered VCFs for downstream analyses (structure<PATH>).
+#   - Text files listing individuals removed (e.g., lowDP.indv).
+# Key tools<PATH>:
+#   - VCFtools
+#   - mawk
+#   - cut
+###################################################################################################
+
+######## VCF Filtering with VCFtools ########
+vcftools --gzvcf XXcv.vcf.gz --max-missing 0.5 \
+    --recode --recode-INFO-all --out raw.g5
+
+# Parameters:
+# --max-missing 0.5: Filter SNPs called in less than 50% of individuals
+# --recode: Output a filtered VCF file with the specified conditions
+# --recode-INFO-all: Retain all INFO fields in the recoded file
+# --out: Specify the output file name for the filtered VCF
+
+### Filter Individuals Based on Relatedness and Missingness ###
+vcftools --vcf raw.g5.recode.vcf --relatedness2  # Calculate relatedness between individuals
+# Retain individuals with a relatedness score less than 0.20 and remove those above this threshold.
+
+vcftools --vcf raw.g5.recode.vcf --missing-indv  # Check missingness for each individual
+# Identify individuals with high levels of missing data (e.g., more than 50%).
+
+# Generate a list of individuals with more than 50% missing data:
+mawk '$5 > 0.5' out.imiss | cut -f1 > lowDP.indv       # Filter individuals with >50% missing data
+
+# Remove individuals with high missingness from the dataset:
+vcftools --vcf raw.g5.recode.vcf --remove lowDP.indv \
+    --recode --recode-INFO-all --out raw.g5lm   # Output new VCF after removing low-quality individuals
+
+#### Main VCF Filtering with Comprehensive Parameters for genetic divergence and population genetic structure ####
+vcftools --gzvcf /scratch/XXX.vcf.gz \
+    --max-missing 0.85 --maf 0.05 \
+    --remove-indels --recode --recode-INFO-all --out g85maf05
+
+# Parameters:
+# --max-missing 0.85: Keep variants called in at least 85% of individuals   ###### 
+# --maf 0.05: Minimum allele frequency of 5%
+# --remove-indels: Exclude indels (insertions and deletions)
+# --recode: Output a filtered VCF file
+# --recode-INFO-all: Retain all INFO fields in the recoded file
+
+###################################################################################################
+# SECTION: LD pruning and PCA-ready dataset preparation (PLINK2)
+# Purpose:
+#   Prune linked SNPs to reduce redundancy for ordination<PATH> analyses.
+#   Generate PCA outputs and an LD-pruned VCF for downstream analyses.
+# Inputs:
+#   - Filtered VCF prior to pruning (e.g., max-missing<PATH> filtered).
+# Outputs:
+#   - Prune lists (.prune.in<PATH>), PLINK binary files, PCA outputs, LD-pruned VCF.
+# Key tools<PATH>:
+#   - PLINK2
+###################################################################################################
+
+### Linkage Pruning ##############we did not do this for the selection vcf file
+
+# Step 1: Linkage pruning with plink2
+plink2 --vcf g85maf05.vcf \             # Input VCF file
+    --double-id \                                         # Assign identical sample IDs to Family ID and Individual ID
+    --allow-extra-chr \                                   # Allow analysis of non-standard chromosome names
+    --set-missing-var-ids @:#\$r:\$a \                    # Set unique IDs for any SNPs with missing IDs (using position and alleles)
+    --indep-pairwise 50 5 0.5 \                           # Linkage pruning parameters:
+                                                         # - 50 SNP window
+                                                         # - 5 SNP slide
+                                                         # - Maximum correlation (R^2) threshold of 0.5
+    --out XXX                                           # Output prefix for pruned SNPs
+
+# Explanation of --indep-pairwise 50 5 0.5:
+# This removes all SNPs with an R^2 (pairwise correlation) above 0.5 in a 50-SNP window, sliding forward by 5 SNPs each time.
+
+####### Remove Pruned SNPs#######
+
+plink2 --vcf g85maf05.vcf \            # Input VCF file for LD-pruned data
+    --double-id \                                         # Set double ID for sample consistency
+    --allow-extra-chr \                                   # Allow non-standard chromosomes
+    --set-missing-var-ids @:#\$r:\$a \                    # Generate unique SNP IDs where needed
+    --extract XXX.prune.in \                            # Only keep SNPs retained after pruning (from .prune.in file)
+    --make-bed \                                          # Convert to binary PLINK format (BED)
+    --pca \                                               # Calculate PCA for population structure
+    --out XXXadm                                        # Output prefix for the binary file and PCA results
+
+##### Convert Binary PLINK to VCF Format #####
+
+plink2 --bfile XXXadm \                                 # Input binary PLINK file
+    --recode vcf \                                        # Recode output to VCF format
+    --double-id \                                         # Set double ID format
+    --allow-extra-chr \                                   # Allow non-standard chromosomes
+    --set-missing-var-ids @:#\$r:\$a \                    # Generate unique IDs for missing SNPs
+    --out g85maf05LDpruned             # Output VCF file after linkage pruning. Use this file for population divergence and population structure
+
+#########For genetic diversity	
+#### use this python script "python loci2vcf.py conochephalusDenovoIpyradnew.loci CFmonoout.vcf samplenames.txt True" 
+###################################################################################################
+# SECTION: Custom conversion: ipyrad<PATH> .loci → VCF (Python script)
+# Purpose:
+#   Convert a .loci file into VCF format for downstream filtering and diversity analyses.
+#   Implements ambiguity-code handling and outputs genotypes in GT format.
+# Inputs:
+#   - Input .loci file from ipyrad<PATH>
+#   - Sample names file (one ID per line<PATH>).
+# Outputs:
+#   - VCF file used by VCFtools and R workflows.
+# Key tools<PATH>:
+#   - Python 2
+#   - numpy
+###################################################################################################
+
+##############loci2vcf.py
+#!/usr/bin/env python2
+
+import numpy as np
+
+
+def make(in_loci, out_vcf, names_file, full_vcf=True):
+    mindepth = 10 # A fixed value
+    version = 0.1 # A fixed value
+    outfile  =  open(out_vcf, 'w')
+    loci = open(in_loci).read().split("|")[:-1]
+
+    with open(names_file) as n:
+        names = n.read().split()
+    names.sort()
+
+    outfile.write(VCF_HEADER.format(version))
+    outfile.write("\t".join(["#CHROM","POS","ID","REF","ALT","QUAL","FILTER","INFO    ","FORMAT"]+list(names)))
+    outfile.write("\n")
+
+    vcflist = []
+    for locusnumber in range(len(loci)):
+#        import pdb; pdb.set_trace()
+        samps = [i.split()[0] for i in loci[locusnumber].strip().split("\n")[:-1]]
+        loc = np.array([tuple(i.split()[-1]) for i in loci[locusnumber].strip().split("\n")[:-1]])
+        NS = str(len(loc))
+        DP = str(mindepth)
+        for base in range(len(loc.T)):
+            col = []
+            site = list(loc.T[base])
+            site = list("".join(site).replace("-","").replace("N",""))
+            if site:
+                for bb in site:
+                    if bb in list("RKYSWM"):
+                        col += unstruct(bb)[0]
+                        col += unstruct(bb)[1]
+                    else:
+                        col += bb
+                REF = most_common([i for i in col if i not in list("-RKYSWMN")])
+                ALT = set([i for i in col if (i in list("ATGC-N")) and (i!=REF)])
+                if not ALT:
+                    if not full_vcf:
+                        # If only writing snps then skip this site
+                        continue
+                    else:
+                        ALT = "."
+                     
+                GENO = [REF]+list(ALT)
+                GENOS = []
+                for samp in names:
+                    if samp in samps:
+                        idx = samps.index(samp)
+                        f = unstruct(loc.T[base][idx])
+                        if ('-' in f) or ('N' in f):
+                            GENOS.append("./.")
+                        else:
+                            GENOS.append(str(GENO.index(f[0]))+"/"+str(GENO.index(f[1])))
+                    else:
+                        GENOS.append("./.")
+                vcflist.append("\t".join([str(locusnumber+1), str(base+1), '.', REF, ",".join(ALT), "20", "PASS",
+                                          ";".join(["NS="+NS, "DP="+DP]), "GT"]+GENOS))
+        if not locusnumber % 1000:
+            outfile.write( "\n".join(vcflist)+"\n" )
+            vcflist = []
+                                              
+
+    outfile.write( "\n".join(vcflist) )
+    outfile.close()
+
+
+def most_common(L):
+    return max(L, key=L.count)
+
+
+def unstruct(amb):
+    amb = amb.upper()
+    " returns bases from ambiguity code"
+    D = {"R":["G","A"],
+         "K":["G","T"],
+         "S":["G","C"],
+         "Y":["T","C"],
+         "W":["T","A"],
+         "M":["C","A"],
+         "A":["A","A"],
+         "T":["T","T"],
+         "G":["G","G"],
+         "C":["C","C"],
+         "N":["N","N"],
+         "-":["-","-"]}
+    return D.get(amb)
+
+
+VCF_HEADER = """##fileformat=VCFv4.1
+##source=pyRAD.v.{}
+##reference=common_allele_at_each_locus
+##INFO=<ID=NS,Number=1,Type=Integer,Description="Number of Samples With Data">
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">
+##INFO=<ID=AA,Number=1,Type=String,Description="Ancestral Allele">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype Quality">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">
+"""
+
+if __name__ == "__main__":
+    import sys
+    in_loci = sys.argv[1]
+    out_vcf = sys.argv[2]
+    names_file = sys.argv[3]
+    try:
+        full_vcf = eval(sys.argv[4])
+    except:
+        full_vcf = True
+    make(in_loci, out_vcf, names_file, full_vcf=full_vcf)	
+##############################
+vcftools --vcf CFmonoout.vcf --remove lowIND --recode --recode-INFO-all --out CF_allsites
+vcftools --vcf CF_I147allsites.recode.vcf --max-missing 0.85 --remove-indels \                               
+    --recode --recode-INFO-all --out CF_I147g85allsites
+
+###################################################################################################
+# SECTION: Genetic diversity estimation (R / dartR)
+# Purpose:
+#   Load a VCF, convert to genlight, assign populations, and compute heterozygosity by population.
+# Inputs:
+#   - Filtered VCF for diversity calculations.
+#   - Population assignment table mapping individuals to populations.
+# Outputs:
+#   - Heterozygosity summary table<PATH> returned by dartR.
+# Key tools<PATH>:
+#   - R: vcfR
+#   - R: adegenet
+#   - R: dartR
+#   - R: hierfstat
+###################################################################################################
+
+###################genetic diversity using dartR
+R
+###### Load Required Libraries ######
+library("vcfR")       # For reading VCF files into R
+library("adegenet")   # Provides genetic analysis tools and data structures
+library("hierfstat")  # For population genetic statistics
+library("dartR")      # Specialized tools for SNP data analysis and heterozygosity reports
+
+###### Load VCF Data ######
+vcf <- read.vcfR("CF_I147g85allsites.vcf")     # Read compressed VCF file containing SNP data
+
+###### Convert VCF Data to genlight Object ######
+gl <- vcfR2genlight(vcf)                  # Convert VCF to genlight format, optimized for population genetics in `dartR` and `adegenet`
+
+###### Load Population Data and Assign Populations ######
+pop.data <- read.table("Pop.txt", sep = "\t", header = TRUE)  # Read population data table
+pop.data$pop <- as.factor(pop.data$pop)   # Convert population data to factor for grouping
+ploidy(gl) <- 2                           # Set ploidy level to 2 (for diploid data)
+pop(gl) <- pop.data$pop                   # Assign population labels to genlight object
+
+###### Check Data and Report Heterozygosity ######
+gl                                        # Display summary of the genlight object
+glx <- gl.compliance.check(gl)            # Check data for compliance with dartR requirements (e.g., missing data)
+
+###### Report Expected Heterozygosity by Population ######
+df <- gl.report.heterozygosity(glx, method = "pop", plot.out = FALSE)  
+# Calculate expected heterozygosity for each population in `glx`
+# - method = "pop": Calculate heterozygosity by population
+# - plot.out = FALSE: Suppress automatic plotting of results
+
+
+###################################################################################################
+# SECTION: Genetic divergence (pairwise FST) with bootstrapping (R / StAMPP)
+# Purpose:
+#   Convert VCF to genlight, convert allele counts to frequencies, and estimate FST with bootstrap CIs.
+# Inputs:
+#   - LD-pruned VCF.
+#   - Population labels aligned to sample order.
+# Outputs:
+#   - CSV files of bootstrap values, p-values, and pairwise FST estimates.
+# Key tools<PATH>:
+#   - R: vcfR
+#   - R: StAMPP
+###################################################################################################
+
+#####################genetic divergence using stampp
+
+R
+###### Load Required Libraries ######
+library(vcfR)      # For reading and processing VCF files in R
+library(StAMPP)    # Provides tools for population differentiation and genetic distance analysis
+
+###### Read and Convert VCF File to genlight Object ######
+vcf <- read.vcfR("g85maf05LDpruned.vcf")   # Load VCF file containing SNP data
+x <- vcfR2genlight(vcf)                   # Convert VCF data to a genlight object for further processing
+
+###### Prepare Population Names ######
+# Convert the genlight object to a matrix format compatible with StAMPP
+x2 <- as.matrix(x)                        # Convert genlight to matrix format
+sample <- row.names(x2)                   # Extract sample names from matrix rows
+
+# Specify population names manually as a vector, matching the number of samples in x2
+pop.names <- c("1", "1", "1", "1", "2", "2", "2", "2", "3", "3", "3", "3")
+
+###### Convert Allele Counts to Frequencies and Prepare Data for StAMPP ######
+ploidy <- ploidy(x)                       # Extract ploidy information from genlight object
+x2 <- x2 * (1/ploidy)                     # Convert allele counts to frequencies by dividing by ploidy
+x2[is.na(x2)] <- NaN                      # Replace NAs with NaN for StAMPP compatibility
+
+# Create a format identifier for StAMPP
+format <- rep("freq", length(sample))     # Specify "freq" format for allele frequency data
+
+# Combine sample, population names, ploidy, format, and frequency data into a single data frame
+x.stampp <- as.data.frame(cbind(sample, pop.names, ploidy, format, x2))
+
+# Convert to StAMPP format
+geno <- stamppConvert(x.stampp, 'r')      # Convert to StAMPP-compatible format for analysis
+
+###### Calculate Fst and Bootstrap Confidence Intervals ######
+fst <- stamppFst(geno, nboots = 100, percent = 95, nclusters = 1)
+
+# Save Fst analysis results
+write.csv(fst$Bootstraps, "Genetic_distances_bootstraps.csv")  # Bootstrap values
+write.csv(fst$Pvalues, "Genetic_distances_Pvalues.csv")        # P-values for Fst significance
+write.csv(fst$Fsts, "Genetic_distances_Fsts.csv")              # Fst values between populations
+
+
+###################################################################################################
+# SECTION: Population structure analysis (DAPC; R / adegenet)
+# Purpose:
+#   Assign populations, run clustering (find.clusters), and perform DAPC for visualization.
+#   Export a publication-ready scatter plot to PDF.
+# Inputs:
+#   - LD-pruned VCF.
+#   - Population assignment file.
+# Outputs:
+#   - DAPC plot PDF and eigenvalue summaries.
+# Key tools<PATH>:
+#   - R: vcfR
+#   - R: adegenet
+#   - R: RColorBrewer
+###################################################################################################
+
+####################DAPC##################################
+######## Read and Convert VCF File ########
+vcf <- read.vcfR("g85maf05LDpruned.vcf")   # Load compressed VCF file
+gl <- vcfR2genlight(vcf)                             # Convert VCF data to a genlight object for compatibility with `adegenet`
+
+######## Load Population Data ########
+pop.data <- read.table("ConocephalusFuscusPopFile.txt", sep = "\t", header = TRUE)   # Load population information
+pop.data <- pop.data[match(indNames(gl), pop.data$Ind), ]
+pop.data
+pop(gl) <- as.factor(pop.data$PopNew)                  # Assign population data to genlight object
+gl
+######## Perform Clustering and DAPC ########
+grp <- find.clusters(gl, max.n.clust = 16)          # Use `find.clusters` to identify clusters
+# - max.n.clust = 19: Set the maximum number of clusters, looking for a plateau in BIC plot
+
+
+# Expand Paired palette to number of populations
+num_pops <- nPop(gl)
+cols <- colorRampPalette(brewer.pal(12, "Paired"))(num_pops)
+
+######## Optimize the Number of Principal Components ########
+dapc <- dapc(gl, n.da = 100, n.pca = 100)           # Run DAPC with 100 discriminant functions and 100 PCs
+temp <- a.score(dapc)                               # Assess the quality of the DAPC (a-score)
+temp <- optim.a.score(dapc)                         # Optimize the number of PCs based on the a-score
+
+######## Save and Plot Final DAPC with Optimal PCs ########
+pdf("DAPCascore15_CF.pdf", width = 3.5, height = 3.5, useDingbats = FALSE)  # Single-column size, square layout
+pnw.dapc <- dapc(gl, n.pca = 28, n.da = 3)  # DAPC analysis
+scatter(pnw.dapc, col = cols, cex = 1.5, legend = TRUE, clabel = TRUE,
+        posi.leg = "bottomleft", cleg = 0.75)  # Adjusted cex for smaller figure
+
+dev.off()                                     # Close the PDF device
+
+percent = pnw.dapc$eig/sum(pnw.dapc$eig)*100 ##### 
+percent
+
+
+###################################################################################################
+# SECTION: Isolation-by-distance (Mantel test; R)
+# Purpose:
+#   Compute pairwise geographic distance and compare to genetic distance using a Mantel test.
+#   Optionally linearize FST and log-transform distances prior to plotting.
+# Inputs:
+#   - Geographic coordinates per population<PATH>
+#   - Pairwise genetic distances (e.g., bootstrap-derived FST values).
+# Outputs:
+#   - Mantel test results, IBD plot, and exported tables used for figures.
+# Key tools<PATH>:
+#   - R: vegan
+#   - R: geosphere
+#   - R: ggplot2
+###################################################################################################
+
+###############isolation by distance
+###conochephalus
+setwd("C:/Users/panat/Desktop/Desktop1/christopher/Conocephalus")
+
+# Load required packages
+library(vegan)
+library(geosphere)
+library(ggplot2)
+library(effects)
+# Define city names and coordinates
+Dataset <- 
+  read.table("CF_GeneticDiversity.txt",
+             header=TRUE, stringsAsFactors=TRUE, sep="\t", na.strings="NA", dec=".", 
+             strip.white=TRUE)
+
+
+
+# Compute pairwise geographic distances (great-circle distances in km)
+geo_dist_matrix <- distm(Dataset[, c("Longitude", "Latitude")]) / 1000  # Convert meters to km
+rownames(geo_dist_matrix) <- Dataset$pop
+colnames(geo_dist_matrix) <- Dataset$pop
+geo_dist_matrix
+
+# Load genetic distance bootstrap data
+bootstrap_data <- read.csv("Genetic_distances_bootstraps.csv", check.names = FALSE)
+
+# Ensure Population1 and Population2 columns exist
+colnames(bootstrap_data) <- c("Population1", "Population2", "Fst")
+
+# Create an empty Fst matrix
+populations <- sort(unique(c(bootstrap_data$Population1, bootstrap_data$Population2)))
+fst_matrix <- matrix(NA, nrow = length(populations), ncol = length(populations),
+                     dimnames = list(populations, populations))
+
+# Fill in the matrix with Fst values
+for (i in 1:nrow(bootstrap_data)) {
+  pop1 <- bootstrap_data$Population1[i]
+  pop2 <- bootstrap_data$Population2[i]
+  fst_value <- bootstrap_data$Fst[i]
+  fst_matrix[pop1, pop2] <- fst_value
+  fst_matrix[pop2, pop1] <- fst_value  # Ensure symmetry
+}
+
+# Save the ordered Fst matrix
+write.csv(fst_matrix, "CF_Fst_matrix_ordered.csv", row.names = TRUE)
+fst_matrix
+# Perform Mantel test
+# Linearize Fst using Fst / (1 - Fst)
+fst_matrix <- fst_matrix / (1 - fst_matrix)
+
+# Log-transform geographic distance
+geo_dist_matrix <- log(geo_dist_matrix)
+geo_dist_matrix
+
+mantel_result <- mantel(as.dist(geo_dist_matrix), as.dist(fst_matrix), method = "pearson", permutations = 9999)
+
+# Print Mantel test result
+print(mantel_result)
+
+# Extract pairwise values for plotting
+geo_dist_values <- as.vector(as.dist(geo_dist_matrix))
+fst_values <- as.vector(as.dist(fst_matrix))
+
+# Create a data frame for plotting
+plot_data <- data.frame(GeographicDistance = geo_dist_values, GeneticDistance = fst_values)
+
+# Plot Isolation by Distance
+ggplot(plot_data, aes(x = GeographicDistance, y = GeneticDistance)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(x = "Geographic Distance (km)", y = "Genetic Distance (Fst)",
+       title = paste("Isolation by Distance (r =", round(mantel_result$statistic, 2), ", p =", round(mantel_result$signif, 3), ")")) +
+  theme_minimal()
+
+write.csv(plot_data, "CF_Fst_Geo.csv", row.names = TRUE)
+geo_dist_values
+geo_dist_matrix
+
+
+#############################################################################
+## ================================
+## EEMS (Population-level, centroid diffs, chunked)
+## ================================
+## Inputs you likely already have in the working directory:
+##  - VCF: "PI_I138g85maf005LDpruned.recode.vcf"
+##  - Meta: "PolyommatusIcarusPopFile_138.txt" with columns: Ind, Pop
+##  - Locations: "PolyommatusLocations.txt" with columns: ID, Longitude, Latitude
+##
+## Outputs (prefix: eems_pop):
+##  - eems_pop.diffs         (Pop x Pop)
+##  - eems_pop.coord         (lon lat, no header, one line per Pop in order)
+##  - eems_pop.order.txt     (Pop order used)
+## ================================
+################################################################################
+suppressPackageStartupMessages({
+  library(vcfR)
+  library(adegenet)
+  library(Matrix)
+})
+
+## --- 1) Paths (edit if needed)
+vcf_path   <- "MG_I76g85maf005LDpruned.vcf"
+meta_path  <- "MG_Samples_combined_All_POP.txt"    # columns: Ind, Pop
+locs_path  <- "PopLat.txt"            # columns: ID, Longitude, Latitude
+out_prefix <- "eems_pop"
+chunk_size <- 5000L                                  # loci per chunk; adjust to your RAM
+
+## --- 2) Read VCF -> genind
+message("Reading VCF…")
+cf <- read.vcfR(vcf_path)
+genind_obj <- vcfR2genind(cf)   # N x L numeric genotype matrix in @tab (0/1/2 with NAs)
+
+## --- 3) Align metadata to genind order & assign Pop
+message("Aligning metadata…")
+meta <- read.table(meta_path, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+stopifnot(all(c("Ind","Pop") %in% names(meta)))
+
+# Align rows to the order of individuals in the genind object
+meta <- meta[ match(indNames(genind_obj), meta$Ind), ]
+stopifnot(!any(is.na(meta$Ind)))   # must be perfect alignment
+
+# Assign Pop to genind
+pop(genind_obj) <- factor(meta$Pop)
+Pop <- droplevels(pop(genind_obj))
+pops <- levels(Pop)
+P <- length(pops)
+
+cat(sprintf("Aligned: %d individuals, %d loci, %d populations\n",
+            nInd(genind_obj), nLoc(genind_obj), P))
+
+## --- 4) Prepare matrices
+G <- genind_obj@tab                  # N x L (may contain NAs)
+N <- nrow(G); L <- ncol(G)
+
+# Sparse indicator matrix: rows = individuals, columns = populations
+# Column order is levels(Pop) == pops
+M <- sparse.model.matrix(~ Pop - 1)  # N x P
+stopifnot(nrow(M) == N, ncol(M) == P)
+
+## --- 5) Accumulate population-level similarities in chunks
+message("Computing centroid diffs in chunks…")
+Sim_acc  <- matrix(0, P, P)  # sum over loci of (Mp %*% t(Mp))
+Self_acc <- numeric(P)       # sum over loci of rowSums(Mp^2)
+
+idx_seq <- split(seq_len(L), ceiling(seq_len(L) / chunk_size))
+
+for (idx in idx_seq) {
+  Gb <- as.matrix(G[, idx, drop = FALSE])    # N x B (B = chunk size)
+  miss <- is.na(Gb)
+  
+  # Sum of genotypes per pop & locus; counts per pop & locus
+  Gb_na0 <- Gb; Gb_na0[miss] <- 0
+  num <- as.matrix(t(M) %*% Gb_na0)          # P x B
+  cnt <- as.matrix(t(M) %*% (!miss))         # P x B
+  
+  # Population means per locus (NA where no data in that pop for that locus)
+  Mp <- num / cnt                             # P x B
+  Mp[!is.finite(Mp)] <- NA_real_
+  
+  # bed2diffs-style imputation at POP level:
+  # Replace NA entries with that locus's mean across pops
+  if (anyNA(Mp)) {
+    col_means <- colMeans(Mp, na.rm = TRUE)   # length B
+    na_idx <- which(!is.finite(Mp), arr.ind = TRUE)
+    if (nrow(na_idx) > 0) {
+      Mp[na_idx] <- col_means[na_idx[, "col"]]
+    }
+  }
+  
+  # Accumulate
+  Sim_acc  <- Sim_acc  + (Mp %*% t(Mp))       # P x P
+  Self_acc <- Self_acc + rowSums(Mp * Mp)     # length P
+}
+
+# Average over all loci
+Sim  <- Sim_acc  / L
+Self <- Self_acc / L
+
+# bed2diffs formula at POP level (squared Euclidean)
+one <- rep(1, P)
+Dp  <- Self %*% t(one) + one %*% t(Self) - 2 * Sim   # P x P
+rownames(Dp) <- colnames(Dp) <- pops
+
+## --- 6) Sanity checks
+# Symmetry and NAs
+stopifnot(isTRUE(all.equal(Dp, t(Dp), check.attributes = FALSE)))
+stopifnot(!any(is.na(Dp)))
+
+# Optional: Euclidean check via Gower double-centering
+H <- diag(P) - matrix(1 / P, P, P)
+B <- -0.5 * H %*% Dp %*% H
+B <- 0.5 * (B + t(B))  # numerical symmetrization
+ev <- eigen(B, symmetric = TRUE, only.values = TRUE)$values
+cat(sprintf("Centered Gram min eigenvalue: %.3g (should be >= ~ -1e-8)\n", min(ev)))
+
+## --- 7) Write diffs and order
+message("Writing EEMS diffs and order…")
+write.table(Dp, paste0(out_prefix, ".diffs"),
+            quote = FALSE, row.names = FALSE, col.names = FALSE)
+writeLines(pops, paste0(out_prefix, ".order.txt"))
+
+## --- 8) Build a coord file in the exact Pop order
+message("Building coord file in matching order…")
+locs <- read.table(locs_path, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+stopifnot(all(c("ID","Longitude","Latitude") %in% names(locs)))
+
+# Match pops -> locations
+coord_df <- merge(data.frame(ID = pops), locs, by = "ID", all.x = TRUE, sort = FALSE)
+if (anyNA(coord_df$Longitude) | anyNA(coord_df$Latitude)) {
+  stop("Missing coordinates for: ",
+       paste(coord_df$ID[is.na(coord_df$Longitude) | is.na(coord_df$Latitude)], collapse = ", "))
+}
+
+# Write lon/lat only (no header), line-for-line aligned to eems_pop.order.txt and .diffs
+write.table(coord_df[, c("Longitude","Latitude")],
+            paste0(out_prefix, ".coord"),
+            quote = FALSE, row.names = FALSE, col.names = FALSE)
+
+# Optional labeled preview for human inspection
+write.table(coord_df, paste0(out_prefix, ".coord.labeled.tsv"),
+            sep = "\t", quote = FALSE, row.names = FALSE)
+
+message("Done.\nFiles written:")
+message(sprintf("  - %s.diffs",       paste0(out_prefix)))
+message(sprintf("  - %s.order.txt",   paste0(out_prefix)))
+message(sprintf("  - %s.coord",       paste0(out_prefix)))
+message(sprintf("  - %s.coord.labeled.tsv (preview)", paste0(out_prefix)))
+
+
+euclideanize_eems_diffs <- function(in_path = "eems_pop.diffs",
+                                    out_path = "eems_pop.euclid.diffs",
+                                    eps = 1e-8, verbose = TRUE) {
+  D <- as.matrix(read.table(in_path, check.names = FALSE))
+  P <- nrow(D); stopifnot(ncol(D) == P)
+  
+  # 1) Symmetrize
+  D <- 0.5 * (D + t(D))
+  
+  # 2) Gower double-centering
+  H <- diag(P) - matrix(1 / P, P, P)
+  B <- -0.5 * H %*% D %*% H
+  B <- 0.5 * (B + t(B))  # numeric symmetry
+  
+  ev <- eigen(B, symmetric = TRUE)
+  vals <- ev$values
+  vecs <- ev$vectors
+  if (verbose) cat(sprintf("Before fix: min eigen(B) = %.3g; #eig>eps = %d (of %d)\n",
+                           min(vals), sum(vals > eps), P))
+  
+  # 3) Make B PSD with exactly one zero eigenvalue
+  ord <- order(vals)                  # ascending
+  vals_fixed <- vals
+  vals_fixed[vals_fixed < eps] <- eps # lift tiny/negatives
+  vals_fixed[ord[1]] <- 0.0           # keep exactly one zero (centering nullspace)
+  
+  # 4) Rebuild B and convert back to squared distances
+  B_psd <- vecs %*% diag(vals_fixed, P, P) %*% t(vecs)
+  B_psd <- 0.5 * (B_psd + t(B_psd))
+  
+  d <- diag(B_psd)
+  D_fix <- outer(d, d, "+") - 2 * B_psd   # <-- the correct way in R
+  D_fix[D_fix < 0] <- 0                   # clip tiny negatives
+  D_fix <- 0.5 * (D_fix + t(D_fix))
+  
+  # 5) Sanity
+  B2 <- -0.5 * H %*% D_fix %*% H
+  B2 <- 0.5 * (B2 + t(B2))
+  ev2 <- eigen(B2, symmetric = TRUE, only.values = TRUE)$values
+  if (verbose) cat(sprintf("After  fix: min eigen(B) = %.3g; #eig>eps = %d (of %d)\n",
+                           min(ev2), sum(ev2 > eps), P))
+  
+  write.table(D_fix, out_path, quote = FALSE, row.names = FALSE, col.names = FALSE)
+  invisible(D_fix)
+}
+
+
+euclideanize_eems_diffs("eems_pop.diffs", "eems_pop.euclid.diffs", eps = 1e-8)
+# then either point EEMS to eems_pop.euclid.diffs,
+# or overwrite eems_pop.diffs with the new file.
+
+
+##########################################################################
+make_eems_plots <- function(mcmcpath, longlat = TRUE, dpi = 250,
+                            plot_pairwise = FALSE, ...) {
+  # force-load helpers from reemsplots2 namespace
+  dimns <- reemsplots2:::read_dimns(mcmcpath[1], longlat, dpi)
+  plot_params <- reemsplots2:::check_plot_params(list(...))
+  plots <- list()
+  p <- reemsplots2:::eems_contours(mcmcpath, dimns, longlat, plot_params, TRUE)
+  plots$mrates01 <- p[[1]]; plots$mrates02 <- p[[2]]
+  p <- reemsplots2:::eems_contours(mcmcpath, dimns, longlat, plot_params, FALSE)
+  plots$qrates01 <- p[[1]]; plots$qrates02 <- p[[2]]
+  plots$pilogl01 <- reemsplots2:::plot_log_posterior(mcmcpath)
+  if (plot_pairwise) {
+    # optional pairwise here…
+  } else {
+    plots$rdist01 <- plots$rdist02 <- plots$rdist03 <- NULL
+  }
+  plots
+}
+
+
+plots <- make_eems_plots(
+  mcmcpath = "C:/Users/panat/Desktop/Desktop1/FuncNet/eems/funcnet/se/eems_run_output/",
+  longlat = TRUE,
+  plot_pairwise = FALSE   # <-- avoids the filter(NULL) crash
+)
+
+# Then:
+plots$mrates01
+plots$qrates01
+plots$pilogl01
+library(ggmap)
+library(raster)
+library(reemsplots2)
+
+# Load your EEMS results
+data <- na.omit(plots$mrates01$data)
+
+# Create raster from tile data
+r <- rasterFromXYZ(data[, c("x", "y", "z")])  # z = migration rate
+crs(r) <- CRS("+proj=longlat +datum=WGS84")  # set projection
+
+writeRaster(r, filename = "SEeems_migration.tif", format = "GTiff", overwrite = TRUE)
